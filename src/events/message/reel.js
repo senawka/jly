@@ -1,68 +1,59 @@
 const { Events } = require('discord.js');
 const { exec } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const tempDir = path.join(__dirname, 'temp');
+const TEMP_DIRECTORY = path.join(__dirname, 'temp');
 
-// very pro naming method
-const generateFilename = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return `${result}.mp4`;
-};
+function generateFilename() {
+    const timestamp = Date.now();
+    const uuid = crypto.randomUUID();
+    return `${timestamp}-${uuid}.mp4`;
+}
 
-const downloadReel = (url, outputPath) => {
-    return new Promise((resolve, reject) => {
-        exec(`yt-dlp -f mp4 "${url}" -o "${outputPath}"`, (error) => {
-            if (error) reject(error);
-            else resolve(outputPath);
-        });
-    });
-};
-
-const handleInstagramReel = async (link, message) => {
+function getTemporaryFilePath() {
     const filename = generateFilename();
-    const filePath = path.join(tempDir, filename);
+    return path.join(TEMP_DIRECTORY, filename);
+}
+
+function downloadInstagramReel(url, outputPath) {
+    return new Promise((resolve, reject) => {
+        exec(`yt-dlp -f mp4 "${url}" -o "${outputPath}"`, (err) =>
+            err ? reject(err) : resolve(outputPath)
+        );
+    });
+}
+
+async function handleInstagramReel(reelUrl, message) {
+    const tempFilePath = getTemporaryFilePath();
 
     try {
-        await downloadReel(link, filePath);
+        await downloadInstagramReel(reelUrl, tempFilePath);
         await message.reply({
-            files: [filePath],
+            files: [tempFilePath],
             allowedMentions: { repliedUser: false }
         });
-    } catch (err) {
-        console.error(`yt-dlp failed for: ${link}\n`, err);
-        // add fallback with lightweight solution
-        try {
-            const fallbackUrl = new URL(link);
-            fallbackUrl.hostname = 'instagramez.com';
-            await message.reply({
-                content: `awawawa (something fucked up, try this): ${fallbackUrl.toString()}`,
-                allowedMentions: { repliedUser: false }
-            });
-        } catch (fallbackErr) {
-            console.error(`Fallback failed for: ${link}\n`, fallbackErr);
-        }
+    } catch (error) {
+        console.error(`Failed to download reel from: ${reelUrl}`, error);
     } finally {
-        fs.unlink(filePath, (err) => {
-            if (err) console.error(`Failed to delete temp file: ${filePath}\n`, err);
+        fs.unlink(tempFilePath, (unlinkError) => {
+            if (unlinkError) {
+                console.error(`Failed to delete temporary file: ${tempFilePath}`, unlinkError);
+            }
         });
     }
-};
+}
 
 module.exports = {
     name: Events.MessageCreate,
     async execute(message) {
         if (message.author.bot) return;
-        const pattern = /(https?:\/\/(www\.)?instagram\.com\/reel\/[^\s]+)/g;
-        const matches = message.content.match(pattern);
+
+        const matches = message.content.match(/https?:\/\/(?:www\.)?instagram\.com\/reel\/[^\s]+/g);
         if (matches) {
-            for (const link of matches) {
-                await handleInstagramReel(link, message);
+            for (const reelUrl of matches) {
+                await handleInstagramReel(reelUrl, message);
             }
         }
     }
