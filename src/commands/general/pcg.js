@@ -1,3 +1,5 @@
+// as of the 18 of April, 2025, 4chan is temporarily unavailable, thereof this command will not work as intended.
+
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 
